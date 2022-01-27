@@ -15,6 +15,9 @@ package v1alpha1
 
 import (
 	"fmt"
+	"github.com/tektoncd/pipeline/pkg/substitution"
+	corev1 "k8s.io/api/core/v1"
+	"knative.dev/pkg/ptr"
 
 	pipelinev1beta1 "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1beta1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -102,11 +105,30 @@ type Secret struct {
 	Ref  string `json:"ref"`
 }
 
-func makeWorkspaces(bindings []WorkflowWorkspaceBinding) []pipelinev1beta1.WorkspaceBinding {
+func makeWorkspaces(bindings []WorkflowWorkspaceBinding, secrets []Secret) []pipelinev1beta1.WorkspaceBinding {
 	res := []pipelinev1beta1.WorkspaceBinding{}
+	secretReplacements := map[string]string{}
+	for _, s := range secrets {
+		secretReplacements[fmt.Sprintf("secrets.%s", s.Name)] = s.Ref
+	}
+
 	for _, b := range bindings {
-		// TODO: Validate Secrets?
-		res = append(res, b.WorkspaceBinding)
+		if b.Secret != "" {
+			// Assumes secret name is valid.
+			// TODO: Add validation for secret name
+			secretName := substitution.ApplyReplacements(b.Secret, secretReplacements)
+			res = append(res, pipelinev1beta1.WorkspaceBinding{
+				Name: b.Name,
+				Secret: &corev1.SecretVolumeSource{
+					SecretName: secretName,
+					Items:      nil,
+					Optional:   ptr.Bool(false),
+				},
+			})
+		} else {
+			b.WorkspaceBinding.Name = b.Name
+			res = append(res, b.WorkspaceBinding)
+		}
 	}
 	return res
 }
@@ -144,7 +166,7 @@ func (w *Workflow) ToPipelineRun() (*pipelinev1beta1.PipelineRun, error) {
 			Params:             params,
 			ServiceAccountName: saName,
 			Timeouts:           &w.Spec.Timeout,
-			Workspaces:         makeWorkspaces(w.Spec.Workspaces), // TODO: Add workspaces
+			Workspaces:         makeWorkspaces(w.Spec.Workspaces, w.Spec.Secrets), // TODO: Add workspaces
 		},
 	}, nil
 }

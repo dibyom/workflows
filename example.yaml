@@ -7,8 +7,9 @@ spec:
   - name: npm-publish-token
     ref: npm-publish-token # Refers to a K8s secret with this name
   - name: git-clone-secret
-    ref: git-clone-secret
-
+    ref:
+      name: git-clone-secret
+      kind: SecretProviderClass
   params:
   - name: url
     default: https://github.com/tektoncd/pipeline

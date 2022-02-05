@@ -49,6 +49,8 @@ type WorkflowSpec struct {
 	// TODO: Repositories
 	Secrets []Secret `json:"secrets,omitempty"`
 
+	Triggers []Trigger `json:"triggers,omitempty"`
+
 	// Params define the default values for params in the Pipeline that can be
 	// overridden in a WorkflowRun or (in the future) from an incoming event.
 	Params []pipelinev1beta1.ParamSpec `json:"params,omitempty"`
@@ -106,6 +108,17 @@ type WorkflowWorkspaceBinding struct {
 type Secret struct {
 	Name string `json:"name"`
 	Ref  string `json:"ref"`
+}
+
+type Trigger struct {
+	// +listType=atomic
+	Bindings []*triggersv1beta1.TriggerSpecBinding `json:"bindings"`
+	// +optional
+	Name string `json:"name,omitempty"`
+
+	// TODO: Tackle simplified filters later
+	// +listType=atomic
+	Interceptors []*triggersv1beta1.TriggerInterceptor `json:"interceptors,omitempty"`
 }
 
 func makeWorkspaces(bindings []WorkflowWorkspaceBinding, secrets []Secret) []pipelinev1beta1.WorkspaceBinding {
@@ -229,3 +242,41 @@ func (w *Workflow) ToTriggerTemplate() (*triggersv1beta1.TriggerTemplate, error)
 
 	return tt, nil
 }
+
+// ToTriggers creates a new Trigger with inline bindings and template for each type
+// TODO: Reuse same triggertemplate for efficiency?
+func (w *Workflow) ToTriggers() ([]triggersv1beta1.Trigger, error) {
+	tt, err := w.ToTriggerTemplate()
+	if err != nil {
+		return nil, err
+	}
+	triggers := []triggersv1beta1.Trigger{}
+	for i, t := range w.Spec.Triggers {
+		name := t.Name
+		if name == "" {
+			// FIXME: What if user re-orders triggers
+			// Name field should always exist -> Add it in defautls
+			name = string(i)
+		}
+
+		triggers = append(triggers, triggersv1beta1.Trigger{
+			TypeMeta: metav1.TypeMeta{
+				Kind:       "Trigger",
+				APIVersion: triggersv1beta1.SchemeGroupVersion.String(),
+			},
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      fmt.Sprintf("%s-%s", w.Name, name),
+				Namespace: w.Namespace,
+			},
+			Spec: triggersv1beta1.TriggerSpec{
+				Bindings: t.Bindings,
+				Template: triggersv1beta1.TriggerSpecTemplate{
+					Spec: &tt.Spec,
+				},
+				Name:         name,
+				Interceptors: t.Interceptors,
+			},
+		})
+	}
+	return triggers, nil
+} 

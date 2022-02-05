@@ -179,12 +179,34 @@ func (w *Workflow) ToTriggerTemplate() (*triggersv1beta1.TriggerTemplate, error)
 	if err != nil {
 		return nil, err
 	}
+
+	params := []triggersv1beta1.ParamSpec{}
+	for _, p := range w.Spec.Params {
+		// TODO: Triggers does not support array values
+		if p.Type == pipelinev1beta1.ParamTypeArray {
+			continue
+		}
+
+		params = append(params, triggersv1beta1.ParamSpec{
+			Name:        p.Name,
+			Description: p.Description,
+			Default:     ptr.String(p.Default.StringVal),
+		})
+		for i, prp := range pr.Spec.Params {
+			if prp.Name == p.Name {
+				pr.Spec.Params[i].Value.StringVal = fmt.Sprintf("$(tt.params.%s)", prp.Name)
+				pr.Spec.Params[i].Value.Type = pipelinev1beta1.ParamTypeString
+			}
+		}
+	}
+
 	// TODO: Once we add trigger-bindings, we need to match on binding param names
 	// and replace the values with the ones from binding
 	prJson, err := json.Marshal(pr)
 	if err != nil {
 		return nil, err
 	}
+
 	tt := &triggersv1beta1.TriggerTemplate{
 		TypeMeta: metav1.TypeMeta{
 			Kind:       "TriggerTemplate",
@@ -195,8 +217,7 @@ func (w *Workflow) ToTriggerTemplate() (*triggersv1beta1.TriggerTemplate, error)
 			Namespace: w.Namespace,
 		},
 		Spec: triggersv1beta1.TriggerTemplateSpec{
-
-			Params: []triggersv1beta1.ParamSpec{},
+			Params: params,
 			// Look in triggers code base for what this should look like
 			ResourceTemplates: []triggersv1beta1.TriggerResourceTemplate{{
 				RawExtension: runtime.RawExtension{

@@ -65,5 +65,16 @@ func runWorkflow(fileName string) error {
 		return fmt.Errorf("error convering pipelinerun to yaml: %w", err)
 	}
 	fmt.Printf("%s", pry)
+
+	fmt.Println("\nTT\n")
+	tt, err := w.ToTriggerTemplate()
+	if err != nil {
+		return fmt.Errorf("error converting to trigger template: %s", err)
+	}
+	tty, err := yaml.Marshal(tt)
+	if err != nil {
+		return fmt.Errorf("error convering pipelinerun to yaml: %w", err)
+	}
+	fmt.Printf("%s", tty)
 	return nil
 }

@@ -14,12 +14,15 @@ limitations under the License.
 package v1alpha1
 
 import (
+	"encoding/json"
 	"fmt"
 	"github.com/tektoncd/pipeline/pkg/substitution"
 	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/runtime"
 	"knative.dev/pkg/ptr"
 
 	pipelinev1beta1 "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1beta1"
+	triggersv1beta1 "github.com/tektoncd/triggers/pkg/apis/triggers/v1beta1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
@@ -169,4 +172,39 @@ func (w *Workflow) ToPipelineRun() (*pipelinev1beta1.PipelineRun, error) {
 			Workspaces:         makeWorkspaces(w.Spec.Workspaces, w.Spec.Secrets), // TODO: Add workspaces
 		},
 	}, nil
+}
+
+func (w *Workflow) ToTriggerTemplate() (*triggersv1beta1.TriggerTemplate, error) {
+	pr, err := w.ToPipelineRun()
+	if err != nil {
+		return nil, err
+	}
+	// TODO: Once we add trigger-bindings, we need to match on binding param names
+	// and replace the values with the ones from binding
+	prJson, err := json.Marshal(pr)
+	if err != nil {
+		return nil, err
+	}
+	tt := &triggersv1beta1.TriggerTemplate{
+		TypeMeta: metav1.TypeMeta{
+			Kind:       "TriggerTemplate",
+			APIVersion: triggersv1beta1.SchemeGroupVersion.String(),
+		},
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      fmt.Sprintf("tt-%s", w.Name),
+			Namespace: w.Namespace,
+		},
+		Spec: triggersv1beta1.TriggerTemplateSpec{
+
+			Params: []triggersv1beta1.ParamSpec{},
+			// Look in triggers code base for what this should look like
+			ResourceTemplates: []triggersv1beta1.TriggerResourceTemplate{{
+				RawExtension: runtime.RawExtension{
+					Raw: prJson,
+				},
+			}},
+		},
+	}
+
+	return tt, nil
 }

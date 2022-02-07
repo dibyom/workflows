@@ -265,8 +265,12 @@ func (w *Workflow) ToTriggers() ([]triggersv1beta1.Trigger, error) {
 				APIVersion: triggersv1beta1.SchemeGroupVersion.String(),
 			},
 			ObjectMeta: metav1.ObjectMeta{
-				Name:      fmt.Sprintf("%s-%s", w.Name, name),
-				Namespace: w.Namespace,
+				Name: fmt.Sprintf("%s-%s", w.Name, name),
+				// Trigger is created in the namespace of the EL for easier RBAC
+				// The SA needs roles to create in any repo though
+				Labels: map[string]string{
+					"managed-by": "tekton-workflows",
+				},
 			},
 			Spec: triggersv1beta1.TriggerSpec{
 				Bindings: t.Bindings,
@@ -279,4 +283,4 @@ func (w *Workflow) ToTriggers() ([]triggersv1beta1.Trigger, error) {
 		})
 	}
 	return triggers, nil
-} 
+}

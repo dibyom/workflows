@@ -46,7 +46,7 @@ type Workflow struct {
 
 // WorkflowSpec describes the desired state of the Workflow
 type WorkflowSpec struct {
-	// TODO: Repositories
+	Repos   []Repo   `json:"repos,omitempty"`
 	Secrets []Secret `json:"secrets,omitempty"`
 
 	Triggers []Trigger `json:"triggers,omitempty"`
@@ -111,6 +111,7 @@ type Secret struct {
 }
 
 type Trigger struct {
+	Event Event `json:"event"`
 	// +listType=atomic
 	Bindings []*triggersv1beta1.TriggerSpecBinding `json:"bindings"`
 	// +optional
@@ -119,6 +120,18 @@ type Trigger struct {
 	// TODO: Tackle simplified filters later
 	// +listType=atomic
 	Interceptors []*triggersv1beta1.TriggerInterceptor `json:"interceptors,omitempty"`
+}
+
+type Event struct {
+	Source Repo                      `json:"source"`
+	Type   string                    `json:"type"`
+	Secret triggersv1beta1.SecretRef `json:"secret"`
+}
+
+type Repo struct {
+	// Only public GitHub URLs for now
+	URL           string `json:"url,omitempty"`
+	DefaultBranch string `json:"defaultBranch"`
 }
 
 func makeWorkspaces(bindings []WorkflowWorkspaceBinding, secrets []Secret) []pipelinev1beta1.WorkspaceBinding {
@@ -283,4 +296,10 @@ func (w *Workflow) ToTriggers() ([]triggersv1beta1.Trigger, error) {
 		})
 	}
 	return triggers, nil
+}
+
+func (r Event) CreateWebhook() {
+	// Either make a call - make a call seems easier
+	// Or use KnativeEventing
+	//gh.
 }

@@ -16,14 +16,14 @@ package v1alpha1
 import (
 	"encoding/json"
 	"fmt"
+	pipelinev1beta1 "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1beta1"
 	"github.com/tektoncd/pipeline/pkg/substitution"
+	triggersv1beta1 "github.com/tektoncd/triggers/pkg/apis/triggers/v1beta1"
 	corev1 "k8s.io/api/core/v1"
+	v1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"knative.dev/pkg/ptr"
-
-	pipelinev1beta1 "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1beta1"
-	triggersv1beta1 "github.com/tektoncd/triggers/pkg/apis/triggers/v1beta1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
 // +genclient
@@ -272,6 +272,31 @@ func (w *Workflow) ToTriggers() ([]triggersv1beta1.Trigger, error) {
 			name = string(i)
 		}
 
+		secretToJson, err := ToV1JSON(t.Event.Secret)
+		if err != nil {
+			return nil, err
+		}
+		eventTypesJson, err := ToV1JSON([]string{t.Event.Type})
+		if err != nil {
+			return nil, err
+		}
+		payloadValidation := triggersv1beta1.TriggerInterceptor{
+			Name: ptr.String("validate-webhook"),
+			Ref: triggersv1beta1.InterceptorRef{
+				Name: "github",
+				Kind: "ClusterInterceptor",
+			},
+			Params: []triggersv1beta1.InterceptorParams{{
+				Name:  "secretRef",
+				Value: secretToJson,
+			}, {
+				Name:  "eventTypes",
+				Value: eventTypesJson,
+			}},
+		}
+		interceptors := []*triggersv1beta1.TriggerInterceptor{&payloadValidation}
+		interceptors = append(interceptors, t.Interceptors...)
+
 		triggers = append(triggers, triggersv1beta1.Trigger{
 			TypeMeta: metav1.TypeMeta{
 				Kind:       "Trigger",
@@ -291,15 +316,19 @@ func (w *Workflow) ToTriggers() ([]triggersv1beta1.Trigger, error) {
 					Spec: &tt.Spec,
 				},
 				Name:         name,
-				Interceptors: t.Interceptors,
+				Interceptors: interceptors,
 			},
 		})
 	}
 	return triggers, nil
 }
 
-func (r Event) CreateWebhook() {
-	// Either make a call - make a call seems easier
-	// Or use KnativeEventing
-	//gh.
+// ToV1JSON is a wrapper around json.Marshal to easily convert to the Kubernetes apiextensionsv1.JSON type
+func ToV1JSON(v interface{}) (v1.JSON, error) {
+	b, err := json.Marshal(v)
+	if err != nil {
+	}
+	return v1.JSON{
+		Raw: b,
+	}, nil
 }

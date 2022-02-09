@@ -1,4 +1,4 @@
-/*
+*
 Copyright 2021 The Tekton Authors
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -92,6 +92,14 @@ type WorkflowList struct {
 // TODO: Add validation
 type PipelineRef struct {
 	Spec pipelinev1beta1.PipelineSpec `json:"spec,omitempty"`
+	Git  PipelineRefGit               `json:"git,omitempty"`
+}
+
+type PipelineRefGit struct {
+	Repo     string `json:"repo"`
+	Commit   string `json:"commit"`
+	Path     string `json:"path"`
+	Pipeline string `json:"pipeline"`
 }
 
 // WorkflowWorkspaceBinding maps a Pipeline's declared Workspaces
@@ -129,12 +137,17 @@ type Event struct {
 }
 
 type Repo struct {
+	Name string `json:"name"`
 	// Only public GitHub URLs for now
 	URL           string `json:"url,omitempty"`
 	DefaultBranch string `json:"defaultBranch"`
 }
 
 func makeWorkspaces(bindings []WorkflowWorkspaceBinding, secrets []Secret) []pipelinev1beta1.WorkspaceBinding {
+	if bindings == nil && len(bindings) == 0 {
+		return []pipelinev1beta1.WorkspaceBinding{}
+	}
+
 	res := []pipelinev1beta1.WorkspaceBinding{}
 	secretReplacements := map[string]string{}
 	for _, s := range secrets {
@@ -179,7 +192,7 @@ func (w *Workflow) ToPipelineRun() (*pipelinev1beta1.PipelineRun, error) {
 		})
 	}
 
-	return &pipelinev1beta1.PipelineRun{
+	pr := pipelinev1beta1.PipelineRun{
 		TypeMeta: metav1.TypeMeta{
 			Kind:       "PipelineRun",
 			APIVersion: pipelinev1beta1.SchemeGroupVersion.String(),
@@ -187,17 +200,36 @@ func (w *Workflow) ToPipelineRun() (*pipelinev1beta1.PipelineRun, error) {
 		ObjectMeta: metav1.ObjectMeta{
 			GenerateName: fmt.Sprintf("%s-run-", w.Name),
 			Namespace:    w.Namespace, // TODO: Do Runs generate from a Workflow always run in the same namespace
-
 			// TODO: Propagate labels/annotations from Workflows as well?
 		},
 		Spec: pipelinev1beta1.PipelineRunSpec{
-			PipelineSpec:       &w.Spec.Pipeline.Spec, // TODO: Apply transforms
 			Params:             params,
 			ServiceAccountName: saName,
 			Timeouts:           &w.Spec.Timeout,
 			Workspaces:         makeWorkspaces(w.Spec.Workspaces, w.Spec.Secrets), // TODO: Add workspaces
 		},
-	}, nil
+	}
+
+	if w.Spec.Pipeline.Git.Repo != "" {
+		repo := ""
+		for _, r := range w.Spec.Repos {
+			if r.Name == w.Spec.Pipeline.Git.Repo {
+				repo = r.URL
+			}
+		}
+		pr.ObjectMeta.Annotations = map[string]string{
+			"resolution.tekton.dev/resolver": "git",
+			"git.repo":                       repo,
+			"git.commit":                     w.Spec.Pipeline.Git.Commit,
+			"git.path":                       w.Spec.Pipeline.Git.Path,
+		}
+		pr.Spec.PipelineRef = &pipelinev1beta1.PipelineRef{Name: w.Spec.Pipeline.Git.Pipeline}
+		pr.Spec.Status = pipelinev1beta1.PipelineRunSpecStatusPending
+	} else {
+		pr.Spec.PipelineSpec = &w.Spec.Pipeline.Spec
+	}
+
+	return &pr, nil
 }
 
 func (w *Workflow) ToTriggerTemplate() (*triggersv1beta1.TriggerTemplate, error) {
@@ -223,6 +255,14 @@ func (w *Workflow) ToTriggerTemplate() (*triggersv1beta1.TriggerTemplate, error)
 				pr.Spec.Params[i].Value.StringVal = fmt.Sprintf("$(tt.params.%s)", prp.Name)
 				pr.Spec.Params[i].Value.Type = pipelinev1beta1.ParamTypeString
 			}
+		}
+	}
+
+	// HACK
+	if pr.Annotations != nil {
+		if _, ok := pr.Annotations["git.commit"]; ok {
+			paramName := "commit-sha" // TODO: Extract commit-sha/param name
+			pr.Annotations["git.commit"] = fmt.Sprintf("$(tt.params.%s)", paramName)
 		}
 	}
 

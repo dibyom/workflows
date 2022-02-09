@@ -12,8 +12,11 @@ spec:
   - name: on-pr
     event:
       source:
-        url: https://github.com/tektoncd/pipeline
+        url: https://github.com/dibyom/tkndemo
       type: "pull_request"
+      secret:
+        secretName: "repo-secret"
+        secretKey: "token"
     interceptors:
     - name: "only_opened_prs"
       ref:
@@ -28,7 +31,7 @@ spec:
       value: $(body.repository.clone_url)
   params:
   - name: url
-    default: https://github.com/tektoncd/pipeline
+    default: "https://github.com/dibyom/tkndemo"
   - name: commit-sha
     default: main
   workspaces:

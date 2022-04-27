@@ -38,7 +38,7 @@ spec:
   - name: clone-secret # Mount secret into a workspace
     secret: "$(secrets.git-clone-secret)"
   - name: source
-  volumeClaimTemplate: # Current Tekton Workspace syntax. We can simplify
+    volumeClaimTemplate: # Current Tekton Workspace syntax. We can simplify
     spec:
       accessModes:
       - ReadWriteOnce

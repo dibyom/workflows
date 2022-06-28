@@ -46,7 +46,7 @@ spec:
         - name: controller
           # This is the Go import path for the binary that is containerized
           # and substituted here.
-          image: ko://github.com/dibyom/workflows/cmd/controller
+          image: ko://github.com/tektoncd/experimental/workflows/cmd/controller
           resources:
             requests:
               cpu: 100m

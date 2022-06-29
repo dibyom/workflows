@@ -16,6 +16,8 @@ package v1alpha1
 import (
 	"encoding/json"
 	"fmt"
+	"regexp"
+
 	pipelinev1beta1 "github.com/tektoncd/pipeline/pkg/apis/pipeline/v1beta1"
 	"github.com/tektoncd/pipeline/pkg/substitution"
 	triggersv1beta1 "github.com/tektoncd/triggers/pkg/apis/triggers/v1beta1"
@@ -125,9 +127,63 @@ type Trigger struct {
 	// +optional
 	Name string `json:"name,omitempty"`
 
+	Filters *Filter `json:"filters,omitempty"`
 	// TODO: Tackle simplified filters later
 	// +listType=atomic
 	Interceptors []*triggersv1beta1.TriggerInterceptor `json:"interceptors,omitempty"`
+}
+
+type Filter struct {
+	GitRef      *GitRef      `json:"gitRef,omitempty"`
+	PullRequest *PullRequest `json:"pullRequest,omitempty"`
+	Custom      []Custom     `json:"cel,omitempty"`
+}
+
+type GitRef struct {
+	// TODO: Validate that this only works for push requests
+	// TODO: Validate that NameRegex is a valid regex
+	NameRegex string `json:"nameRegex,omitempty"`
+}
+
+func (gr *GitRef) ToInterceptor(e Event) (*triggersv1beta1.TriggerInterceptor, error) {
+	if gr == nil {
+		return nil, fmt.Errorf("gitRef is nil")
+	}
+	if e.Type != "push" {
+		return nil, fmt.Errorf("gitRef is only supported for push events")
+	}
+	_, err := regexp.Compile(gr.NameRegex)
+	if err != nil {
+		return nil, fmt.Errorf("invalid regular expression: %w", err)
+	}
+	celFilter := fmt.Sprintf("body.ref.split('/')[2].matches(%s)", gr.NameRegex)
+	celFilterToJSON, err := ToV1JSON(celFilter)
+	if err != nil {
+		return nil, err
+	}
+	gitRefInterceptor := triggersv1beta1.TriggerInterceptor{
+		Name: ptr.String("gitRef"),
+		Ref: triggersv1beta1.InterceptorRef{
+			Name: "cel",
+			Kind: "ClusterInterceptor",
+		},
+		Params: []triggersv1beta1.InterceptorParams{{
+			Name:  "filter",
+			Value: celFilterToJSON,
+		}},
+	}
+	return &gitRefInterceptor, nil
+}
+
+type PullRequest struct {
+}
+
+type Custom struct {
+	Cel string `json:"cel,omitempty"`
+}
+
+func (c *Custom) ToInterceptor(e Event) ([]triggersv1beta1.TriggerInterceptor, error) {
+	return nil, nil
 }
 
 type Event struct {
@@ -309,7 +365,7 @@ func (w *Workflow) ToTriggers() ([]triggersv1beta1.Trigger, error) {
 		if name == "" {
 			// FIXME: What if user re-orders triggers
 			// Name field should always exist -> Add it in defautls
-			name = string(i)
+			name = fmt.Sprint(i)
 		}
 
 		secretToJson, err := ToV1JSON(t.Event.Secret)
@@ -335,6 +391,16 @@ func (w *Workflow) ToTriggers() ([]triggersv1beta1.Trigger, error) {
 			}},
 		}
 		interceptors := []*triggersv1beta1.TriggerInterceptor{&payloadValidation}
+		// Add GitRef filter next if it exists
+		if t.Filters.GitRef != nil {
+			gitRef, err := t.Filters.GitRef.ToInterceptor(t.Event)
+			if err != nil {
+				return nil, err
+			}
+			interceptors = append(interceptors, gitRef)
+		}
+		// Add PR filter next if it exists
+		// Add any custom CEL filters
 		interceptors = append(interceptors, t.Interceptors...)
 
 		triggers = append(triggers, triggersv1beta1.Trigger{
@@ -367,6 +433,7 @@ func (w *Workflow) ToTriggers() ([]triggersv1beta1.Trigger, error) {
 func ToV1JSON(v interface{}) (v1.JSON, error) {
 	b, err := json.Marshal(v)
 	if err != nil {
+		return v1.JSON{}, err
 	}
 	return v1.JSON{
 		Raw: b,

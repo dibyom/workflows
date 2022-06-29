@@ -18,8 +18,8 @@ package main
 
 import (
 	"context"
-	"fmt"
 
+	"github.com/tektoncd/experimental/workflows/pkg/apis/workflows/v1alpha1"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"knative.dev/pkg/configmap"
 	"knative.dev/pkg/controller"
@@ -27,20 +27,17 @@ import (
 	"knative.dev/pkg/logging"
 	"knative.dev/pkg/metrics"
 	"knative.dev/pkg/signals"
-	"knative.dev/pkg/system"
 	"knative.dev/pkg/webhook"
 	"knative.dev/pkg/webhook/certificates"
 	"knative.dev/pkg/webhook/configmaps"
 	"knative.dev/pkg/webhook/resourcesemantics"
 	"knative.dev/pkg/webhook/resourcesemantics/defaulting"
 	"knative.dev/pkg/webhook/resourcesemantics/validation"
-
-	"knative.dev/sample-controller/pkg/apis/samples/v1alpha1"
 )
 
 var types = map[schema.GroupVersionKind]resourcesemantics.GenericCRD{
 	// List the types to validate.
-	v1alpha1.SchemeGroupVersion.WithKind("AddressableService"): &v1alpha1.AddressableService{},
+	v1alpha1.SchemeGroupVersion.WithKind("Workflow"): &v1alpha1.Workflow{},
 }
 
 var callbacks = map[schema.GroupVersionKind]validation.Callback{}
@@ -49,7 +46,7 @@ func NewDefaultingAdmissionController(ctx context.Context, cmw configmap.Watcher
 	return defaulting.NewAdmissionController(ctx,
 
 		// Name of the resource webhook.
-		fmt.Sprintf("defaulting.webhook.%s.knative.dev", system.Namespace()),
+		"defaulting.webhook.workflows.tekton.dev",
 
 		// The path on which to serve the webhook.
 		"/defaulting",
@@ -73,7 +70,7 @@ func NewValidationAdmissionController(ctx context.Context, cmw configmap.Watcher
 	return validation.NewAdmissionController(ctx,
 
 		// Name of the resource webhook.
-		fmt.Sprintf("validation.webhook.%s.knative.dev", system.Namespace()),
+		"validation.webhook.workflows.tekton.dev",
 
 		// The path on which to serve the webhook.
 		"/resource-validation",
@@ -100,7 +97,7 @@ func NewConfigValidationController(ctx context.Context, cmw configmap.Watcher) *
 	return configmaps.NewAdmissionController(ctx,
 
 		// Name of the configmap webhook.
-		fmt.Sprintf("config.webhook.%s.knative.dev", system.Namespace()),
+		"config.webhook.workflows.tekton.dev",
 
 		// The path on which to serve the webhook.
 		"/config-validation",
@@ -115,12 +112,12 @@ func NewConfigValidationController(ctx context.Context, cmw configmap.Watcher) *
 
 func main() {
 	ctx := webhook.WithOptions(signals.NewContext(), webhook.Options{
-		ServiceName: "webhook",
+		ServiceName: "workflows-webhook",
 		Port:        8443,
-		SecretName:  "webhook-certs",
+		SecretName:  "workflows-webhook-certs",
 	})
 
-	sharedmain.WebhookMainWithContext(ctx, "webhook",
+	sharedmain.WebhookMainWithContext(ctx, "webhook-workflows",
 		certificates.NewController,
 		NewDefaultingAdmissionController,
 		NewValidationAdmissionController,

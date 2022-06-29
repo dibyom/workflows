@@ -19,12 +19,12 @@ package main
 import (
 
 	// This defines the shared main for injected controllers.
+	"github.com/tektoncd/experimental/workflows/pkg/reconciler/workflows"
 	"knative.dev/pkg/injection/sharedmain"
 )
 
 func main() {
 	sharedmain.Main("controller",
-		addressableservice.NewController,
-		simpledeployment.NewController,
+		workflows.NewController,
 	)
 }
